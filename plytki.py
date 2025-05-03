@@ -1,3 +1,6 @@
+from functools import reduce
+from math import gcd
+
 from ortools.sat.python import cp_model
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -24,127 +27,98 @@ WEIGHTS = {
     6: 30,
 }
 
+PENALTY_WEIGHT = 50
+
 def solve_torus_tiling(width_cm, height_cm, G):
-    # Ensure floor dimensions are multiples of grid G
     assert width_cm % G == 0 and height_cm % G == 0, \
         f"Floor dimensions must be multiples of {G}cm"
-
-    W = width_cm // G  # cells horizontally
-    H = height_cm // G  # cells vertically
-
-    # Build model
+    W, H = width_cm // G, height_cm // G
     model = cp_model.CpModel()
 
-    # Precompute tile sizes in cells (two orientations)
-    tile_cells = {
-        k: [(w // G, h // G), (h // G, w // G)]
-        for k, (w, h) in FORMATS.items()
-    }
+    # Precompute tile sizes in grid cells
+    tile_cells = {k: [(w // G, h // G), (h // G, w // G)] for k, (w, h) in FORMATS.items()}
 
-    # Variables: X[k,i,j,o] == 1 if tile k at origin (i,j) with orientation o
+    # Placement variables
     X = {}
     for k in FORMATS:
-        for o, (w_cells, h_cells) in enumerate(tile_cells[k]):
+        for o, (w_c, h_c) in enumerate(tile_cells[k]):
             for i in range(W):
                 for j in range(H):
                     X[k, i, j, o] = model.NewBoolVar(f"X_{k}_{i}_{j}_{o}")
 
-    # Coverage: every cell is covered exactly once (toroidal wrap)
+    # Coverage constraint
     for x in range(W):
         for y in range(H):
             model.Add(
                 sum(
                     X[k, i, j, o]
                     for k in FORMATS
-                    for o, (w_cells, h_cells) in enumerate(tile_cells[k])
+                    for o, (w_c, h_c) in enumerate(tile_cells[k])
                     for i in range(W)
                     for j in range(H)
-                    if ((x - i) % W) < w_cells and ((y - j) % H) < h_cells
+                    if ((x - i) % W) < w_c and ((y - j) % H) < h_c
                 ) == 1
             )
 
-    # Ensure each tile type used at least once
+    # Each tile type >=1
     # for k in FORMATS:
-    #     model.Add(
-    #         sum(X[k, i, j, o] for i in range(W) for j in range(H) for o in [0, 1]) >= 1
-    #     )
-        model.Add(
-            sum(X[6, i, j, o] for i in range(W) for j in range(H) for o in [0, 1]) >= 1
-        )
-    # Non-trivial wrap: some tile crosses vertical and horizontal boundary
+    #     model.Add(sum(X[k, i, j, o] for i in range(W) for j in range(H) for o in [0,1]) >= 1)
+    model.Add(sum(X[6, i, j, o] for i in range(W) for j in range(H) for o in [0, 1]) >= 1)
+    # Non-trivial wrap
     model.Add(
-        sum(
-            X[k, i, j, o]
-            for k in FORMATS
-            for o, (w_cells, h_cells) in enumerate(tile_cells[k])
-            for i in range(W)
-            for j in range(H)
-            if j + h_cells > H
-        ) >= 1
+        sum(X[k,i,j,o] for k in FORMATS for o,(w_c,h_c) in enumerate(tile_cells[k]) for i in range(W) for j in range(H) if j + h_c > H) >= 1
     )
     model.Add(
-        sum(
-            X[k, i, j, o]
-            for k in FORMATS
-            for o, (w_cells, h_cells) in enumerate(tile_cells[k])
-            for i in range(W)
-            for j in range(H)
-            if i + w_cells > W
-        ) >= 1
+        sum(X[k,i,j,o] for k in FORMATS for o,(w_c,h_c) in enumerate(tile_cells[k]) for i in range(W) for j in range(H) if i + w_c > W) >= 1
     )
 
-    # No full straight lines across torus: every vertical boundary and horizontal boundary
+    # No full straight lines
     for b in range(W):
         model.Add(
-            sum(
-                X[k, i, j, o]
-                for k in FORMATS
-                for o, (w_cells, _) in enumerate(tile_cells[k])
-                for i in range(W)
-                for j in range(H)
-                if 0 < ((b - i) % W) < w_cells
-            ) >= 1
+            sum(X[k,i,j,o] for k in FORMATS for o,(w_c,_) in enumerate(tile_cells[k]) for i in range(W) for j in range(H) if 0 < ((b - i) % W) < w_c) >= 1
         )
     for r in range(H):
         model.Add(
-            sum(
-                X[k, i, j, o]
-                for k in FORMATS
-                for o, (_, h_cells) in enumerate(tile_cells[k])
-                for i in range(W)
-                for j in range(H)
-                if 0 < ((r - j) % H) < h_cells
-            ) >= 1
+            sum(X[k,i,j,o] for k in FORMATS for o,(_,h_c) in enumerate(tile_cells[k]) for i in range(W) for j in range(H) if 0 < ((r - j) % H) < h_c) >= 1
         )
 
-    # Objective: minimize weighted sum of tiles
+    # Four-corner penalty variables
+    C = {}
+    for b in range(W):
+        for r in range(H):
+            C[b,r] = model.NewBoolVar(f"C_{b}_{r}")
+            # sum of corners at (b,r)
+            corner_sum = []
+            for k in FORMATS:
+                for o,(w_c,h_c) in enumerate(tile_cells[k]):
+                    for i in range(W):
+                        for j in range(H):
+                            # corner positions
+                            if ((i % W) == b and (j % H) == r) or \
+                               ((i + w_c) % W == b and (j % H) == r) or \
+                               ((i % W) == b and (j + h_c) % H == r) or \
+                               ((i + w_c) % W == b and (j + h_c) % H == r):
+                                corner_sum.append(X[k,i,j,o])
+            # Exactly four corners -> C[b,r]=1
+            model.Add(sum(corner_sum) == 4).OnlyEnforceIf(C[b,r])
+            model.Add(sum(corner_sum) <= 3).OnlyEnforceIf(C[b,r].Not())
+
+    # Objective: weighted tiles + penalty for four-corner points
     model.Minimize(
-        sum(
-            WEIGHTS[k] * X[k, i, j, o]
-            for k in FORMATS
-            for i in range(W)
-            for j in range(H)
-            for o in [0, 1]
-        )
+        sum(WEIGHTS[k] * X[k,i,j,o] for k in FORMATS for i in range(W) for j in range(H) for o in [0,1])
+        + PENALTY_WEIGHT * sum(C.values())
     )
 
-    # Solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 60
     solver.parameters.num_search_workers = 8
     status = solver.Solve(model)
-
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         print("No solution found.")
         return None
 
-    # Extract placements
-    placements = [
-        (k, i, j, o)
-        for (k, i, j, o), var in X.items()
-        if solver.Value(var) == 1
-    ]
-    return placements, W * G, H * G, G
+    placements = [(k,i,j,o) for (k,i,j,o), var in X.items() if solver.Value(var)]
+    return placements, W*G, H*G, G
 
 
 def draw_tiling(placements, width_cm, height_cm, G):
@@ -156,12 +130,16 @@ def draw_tiling(placements, width_cm, height_cm, G):
 
     fig, ax = plt.subplots()
     # Colors for central block and neighbors
-    base_colors = {k: (random.random(), random.random(), random.random()) for k in FORMATS}
-    central_colors = {k: (*c, 0.8) for k, c in base_colors.items()}
-    neighbor_colors = {
-        k: (c[0]*0.3+0.5*0.7, c[1]*0.3+0.5*0.7, c[2]*0.3+0.5*0.7, 0.3)
-        for k, c in base_colors.items()
-    }
+    # Colors for central block (strong red) and neighbors (weak red)
+    central_colors = {}
+    neighbor_colors = {}
+    for k in FORMATS:
+        g = random.random()
+        b = random.random()
+        # strong red component > 0.5 for central
+        central_colors[k] = (random.uniform(0.8, 1.0), g, b, 0.8)
+        # weak red component < 0.2 for neighbors
+        neighbor_colors[k] = (random.uniform(0.0, 0.1), g, b, 0.3)
 
     # Determine next available filename
     existing = [f for f in os.listdir('.') if re.match(r'uklad-\d+\.png$', f)]
@@ -196,9 +174,10 @@ def draw_tiling(placements, width_cm, height_cm, G):
 
 if __name__ == '__main__':
     # Iterate floor dimensions from 100 to 300 cm in steps of 10
-    G = 10
-    for H_cm in range(90, 361, 10):
-        for W_cm in range(H_cm, 361, 10):
+    all_dims = [dim for wh in FORMATS.values() for dim in wh]
+    G = reduce(gcd, all_dims)
+    for H_cm in range(100, 361, G):
+        for W_cm in range(H_cm, 361, G):
             print(f"Solving torus tiling for {W_cm}x{H_cm} cm...")
             result = solve_torus_tiling(W_cm, H_cm, G)
             if result:
