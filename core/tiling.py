@@ -5,29 +5,13 @@ import random
 import os
 import re
 
-# Tile formats in centimeters
-FORMATS = {
-    1: (20, 20),
-    2: (20, 40),
-    3: (40, 40),
-    4: (40, 60),
-    5: (60, 60),
-    6: (60, 90),
-}
-# Weights for each tile type
-WEIGHTS = {
-    1: 2,
-    2: 3,
-    3: 5,
-    4: 8,
-    5: 11,
-    6: 30,
-}
-
-PENALTY_WEIGHT = 50
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional
 from ortools.sat.python import cp_model
+
+import io
+from PIL import Image
+
 
 @dataclass
 class TilingConfig:
@@ -173,11 +157,12 @@ def solve_torus_tiling(width_cm: int,
 
 
 
-def draw_tiling(placements, width_cm, height_cm, G):
+def draw_tiling(placements, width_cm: int, height_cm: int, G: int,
+                formats: Dict[int, Tuple[int,int]]):
     # Recompute tile_cells for drawing
     tile_cells = {
         k: [(w // G, h // G), (h // G, w // G)]
-        for k, (w, h) in FORMATS.items()
+        for k, (w, h) in formats.items()
     }
 
     fig, ax = plt.subplots()
@@ -185,7 +170,7 @@ def draw_tiling(placements, width_cm, height_cm, G):
     # Colors for central block (strong red) and neighbors (weak red)
     central_colors = {}
     neighbor_colors = {}
-    for k in FORMATS:
+    for k in formats:
         g = random.random()
         b = random.random()
         # strong red component > 0.5 for central
@@ -193,11 +178,6 @@ def draw_tiling(placements, width_cm, height_cm, G):
         # weak red component < 0.2 for neighbors
         neighbor_colors[k] = (random.uniform(0.0, 0.1), g, b, 0.3)
 
-    # Determine next available filename
-    existing = [f for f in os.listdir('.') if re.match(r'uklad5-\d+\.png$', f)]
-    nums = [int(re.search(r'uklad5-(\d+)\.png', f).group(1)) for f in existing]
-    next_num = max(nums) + 1 if nums else 1
-    filename = f"uklad5-{next_num}.png"
 
     # Draw 3x3 blocks
     for dx in (-1, 0, 1):
@@ -219,41 +199,21 @@ def draw_tiling(placements, width_cm, height_cm, G):
     ax.set_aspect('equal')
     ax.invert_yaxis()
     plt.title(f"Torus Tiling 3x3 of {width_cm}x{height_cm} cm")
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"Saved tiling figure to {filename}")
-    #plt.show()
 
-if __name__ == '__main__':
-    from functools import reduce
-    from math import gcd
 
-    default_cfg = TilingConfig(
-        formats={1:(20,20), 2:(20,40), 3:(40,40), 4:(40,60), 5:(60,60)},
-        weights={1:2, 2:3, 3:5, 4:8, 5:11},
-        grid_size=1  # tymczasowo, uzupełnimy poniżej
-    )
 
-    all_dims = [d for dims in default_cfg.formats.values() for d in dims]
-    default_cfg.grid_size = reduce(gcd, all_dims)
+    ax.set_xlim(-width_cm, 2*width_cm)
+    ax.set_ylim(-height_cm, 2*height_cm)
+    ax.set_aspect('equal')
+    ax.invert_yaxis()
+    plt.title(f"Torus Tiling 3x3 of {width_cm}x{height_cm} cm")
 
-    default_cfg.min_counts = {1:1, 2:1, 3:1, 4:1, 5:1}
-    default_cfg.max_counts = {5: 10}
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=300, bbox_inches='tight')
+    buf.seek(0)
+    img = Image.open(buf).copy()
+    buf.close()
+    plt.close(fig)
+    return img
 
-    default_cfg.enforce_wrap = True
-    default_cfg.enforce_no_straight_lines = True
-    default_cfg.four_corner_penalty_weight = 50
 
-    for H_cm in range(80, 361, default_cfg.grid_size):
-        for W_cm in range(H_cm, 361, default_cfg.grid_size):
-            print(f"Solving torus tiling for {W_cm}×{H_cm} cm (G={default_cfg.grid_size})...")
-            result = solve_torus_tiling(W_cm, H_cm, default_cfg)
-            if not result:
-                print(f"  → No solution for {W_cm}×{H_cm}")
-                continue
-
-            placements, w_out, h_out, G_out = result
-            total_tiles = len(placements)
-            total_weight = sum(default_cfg.weights[k] for k,_,_,_ in placements)
-            print(f"  → Found: {total_tiles} tiles, total weight {total_weight}")
-
-            draw_tiling(placements, w_out, h_out, G_out)
