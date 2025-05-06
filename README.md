@@ -171,3 +171,177 @@ TorusTiling/
 ## License
 
 Released under the [MIT License](LICENSE).
+
+
+
+---
+
+# Torus Tiling (wersja polska)
+
+**Aplikacja w Pythonie do generowania nietrywialnych układów płytek z ciągłością toroidalną**
+
+---
+
+## Spis treści
+
+* [Opis](#opis)
+* [Zasady działania](#zasady-działania)
+* [Funkcje GUI](#funkcje-gui)
+* [Wymagania](#wymagania)
+* [Instalacja](#instalacja)
+* [Uruchamianie aplikacji](#uruchamianie-aplikacji)
+* [Budowanie pliku wykonywalnego](#budowanie-pliku-wykonywalnego)
+* [Zapisywanie wyników](#zapisywanie-wyników)
+* [Struktura projektu](#struktura-projektu)
+* [Licencja](#licencja)
+
+---
+
+## Opis
+
+Projekt rozwiązuje problem **układania płytek na torusie** przy użyciu [Google OR-Tools](https://developers.google.com/optimization) i udostępnia przyjazny graficzny interfejs zbudowany w Tkinterze.
+
+Pozwala użytkownikowi zdefiniować różne formaty płytek i automatycznie znaleźć nietrywialny periodyczny układ, który spełnia zestaw rygorystycznych ograniczeń geometrycznych. Wynikowy wzór wyświetlany jest w formie **podglądu układu 3×3**, pokazującego ciągłość toroidalną.
+
+---
+
+## Zasady działania
+
+Układanie płytek musi spełniać następujące reguły:
+
+1. **Brak nakładania** – płytki nie mogą się pokrywać.
+2. **Brak dziur** – cała powierzchnia musi być dokładnie pokryta.
+3. **Ciągłość toroidalna** – górna krawędź musi pasować do dolnej, a lewa do prawej.
+4. **Nietrywialne krawędzie** – niedozwolone są proste nieprzerwane linie na brzegach.
+5. **Różnorodność płytek** – każda zdefiniowana płytka musi wystąpić co najmniej raz.
+6. **Etykiety** – każda płytka oznaczona jest swoim ID.
+7. **Wizualizacja** – rysunek zawiera centralny układ oraz jego sąsiadów (3×3).
+8. **Optymalizacja** – użycie płytek uwzględnia zadane koszty, a rozwiązanie jest optymalne względem tych wag.
+
+---
+
+## Funkcje GUI
+
+Interfejs graficzny zawiera:
+
+### **Tabela płytek**
+Możliwość zdefiniowania płytek z parametrami:
+- **ID** – unikalny numer
+- **Szerokość / Wysokość (cm)** – rozmiar fizyczny płytki
+- **Koszt** – waga w funkcji celu, solver minimalizuje łączny koszt
+- **Min / Max liczba** – minimalna i maksymalna liczba użyć
+
+Przyciski:
+- `Add type` – dodaje nowy wiersz z domyślnymi wartościami
+- `Edit type` – edytuje zaznaczony wiersz
+- `Remove type` – usuwa zaznaczony wiersz
+
+### **Parametry solwera**
+- **Szerokość / Wysokość (cm)** – wymiary powierzchni
+- **Rozmiar siatki (cm)** – jednostka dyskretyzacji
+- **Max czas (s)** – limit czasu działania solvera
+- **Liczba wątków** – równoległość przeszukiwania
+- **Enforce wrap** – wymuszanie ciągłości brzegów
+- **No straight lines** – zakaz długich linii przebiegających w całości przez krawędzie płytek
+- **4-corner penalty** – kara za punkty, w których łączą się 4 krawędzie płytek (solver unika sytuacji, że w jednym punkcie zbiegają się 4 krawędzie płytek)
+
+### **Podgląd**
+- Dynamicznie aktualizowany rysunek z układem
+- Pokazuje centralny blok i ośmiu sąsiadów toroidalnych
+
+### **Przyciski**
+- `Solve` – uruchamia solver
+- `Save image` – zapisuje podgląd jako PNG
+
+---
+
+## Wymagania
+
+* Python 3.8 lub nowszy
+* [OR-Tools](https://developers.google.com/optimization)
+* [Matplotlib](https://matplotlib.org/)
+* [Pillow](https://python-pillow.org/)
+* Tkinter (zwykle dołączony do Pythona)
+
+---
+
+## Instalacja
+
+```bash
+git clone https://github.com/SebastianGruza/TorusTiling.git
+cd TorusTiling
+
+python -m venv .venv
+source .venv/bin/activate   # Linux/macOS
+.\.venv\Scriptsctivate    # Windows
+
+pip install -r requirements.txt
+```
+
+---
+
+## Uruchamianie aplikacji
+
+```bash
+python -m gui.gui
+```
+
+Wypełnij dane o płytkach, dostosuj ograniczenia i kliknij **Solve**, by zobaczyć wynik.
+
+---
+
+## Budowanie pliku wykonywalnego
+
+### Windows (.exe)
+
+```powershell
+pip install pyinstaller
+pyinstaller ^
+  --onefile ^
+  --windowed ^
+  --name TorusTiling ^
+  --add-data "core;core" ^
+  --collect-binaries ortools ^
+  gui\gui.py
+```
+
+### Linux (Ubuntu)
+
+```bash
+sudo apt install python3-tk
+pip install pyinstaller
+pyinstaller   --onefile   --name TorusTilingLinux   --add-data "core:core"   gui/gui.py
+```
+
+Lub uruchomienie bezpośrednio:
+
+```bash
+python -m gui.gui
+```
+
+---
+
+## Zapisywanie wyników
+
+Kliknij **Save image**, by zapisać podgląd jako PNG. Wybierz miejsce zapisania pliku.
+
+---
+
+## Struktura projektu
+
+```
+TorusTiling/
+├── core/
+│   └── tiling.py      # Logika solvera i rysowania
+├── gui/
+│   └── gui.py         # Interfejs użytkownika w Tkinterze
+├── requirements.txt
+├── README.md
+└── ...
+```
+
+---
+
+## Licencja
+
+Projekt jest udostępniony na licencji [MIT](LICENSE).
