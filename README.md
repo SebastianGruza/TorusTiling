@@ -30,6 +30,9 @@ This project solves the **torus tiling** problem using Google OR-Tools’ CP-SAT
 * Place rectangular tiles under periodic boundary conditions.
 * Optimize packing (maximize number of tiles or cover specific patterns).
 
+![Screenshot TorusTiling](images/Screenshot.jpg)
+
+
 ---
 
 ## Features
